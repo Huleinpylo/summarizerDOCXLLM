@@ -124,4 +124,4 @@ Contributions are welcome! To contribute:
 
 ## 🧑‍💻 Authors
 
-Developed by **Xcom** and **OCYAN** and the team.
+Developed by **Xcom** and **A-Terrien** and the team.
