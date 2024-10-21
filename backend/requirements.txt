@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-docx
+langchain
+openai
+regex
+langchain_ollama
