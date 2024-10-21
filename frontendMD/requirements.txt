@@ -1,3 +1,7 @@
 streamlit
 requests
 uuid
+streamlit
+streamlit-lottie
+requests
+pillow
