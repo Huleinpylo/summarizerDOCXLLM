@@ -67,6 +67,7 @@ async def summarize(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
 @app.get("/status/{job_id}")
 def get_status(job_id: str):
     """
@@ -87,10 +88,17 @@ def get_status(job_id: str):
                 "status_message": "Job is pending."
             }
         elif task_result.state != 'FAILURE':
+            meta_info = task_result.info or {}
+            global_progress = meta_info.get('current', 0) / meta_info.get('total', 1) * 100
             response = {
                 "status": task_result.state,
-                "progress": task_result.info.get('current', 0) / task_result.info.get('total', 1) * 100,
-                "status_message": task_result.info.get('status', '')
+                "progress": global_progress,
+                "status_message": meta_info.get('status', ''),
+                "section_total": meta_info.get('section_total', 0),
+                "section_current": meta_info.get('section_current', 0),
+                "section_progress": meta_info.get('section_progress', 0),
+                "chunk_total": meta_info.get('chunk_total', 0),
+                "chunk_current": meta_info.get('chunk_current', 0)
             }
             if task_result.state == 'SUCCESS':
                 response['result'] = task_result.result
@@ -102,7 +110,7 @@ def get_status(job_id: str):
                 "status_message": str(task_result.info),  # this is the exception raised
             }
 
-        return JSONResponse(content=response)
+        return response
     except Exception as e:
         logger.error(f"Error in /status/{job_id} endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

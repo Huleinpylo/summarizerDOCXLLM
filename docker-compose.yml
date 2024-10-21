@@ -1,0 +1,26 @@
+# docker-compose.yml
+services:
+  redis:
+    image: "redis:latest"
+    ports:
+      - "6379:6379"
+  
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.celery
+    env_file:
+      - .env
+    depends_on:
+      - redis
