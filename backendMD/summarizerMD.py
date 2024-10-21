@@ -4,6 +4,7 @@ import logging
 import re
 from typing import List, Dict
 from langchain_ollama import OllamaLLM
+from langchain.llms import OpenAI
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
@@ -16,22 +17,43 @@ load_dotenv()
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize the Ollama LLM with Llama 3
-ollama_api_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
-ollama_api_key = os.getenv("OLLAMA_API_KEY", "")
+def get_summarize_chain(model: str, api_key: str = None, api_url: str = None) -> LLMChain:
+    """
+    Factory function to create an LLMChain based on the selected model.
 
-llm = OllamaLLM(
-    model="llama3.1",
-    temperature=0.3,
-    api_url=ollama_api_url,
-    api_key=ollama_api_key if ollama_api_key else None
-)
-logger.info("Initialized the Ollama LLM with Llama 3.1 model.")
+    Args:
+        model (str): The model to use ('ollama' or 'openai').
+        api_key (str, optional): The API key for the model.
+        api_url (str, optional): The API URL for Ollama.
 
-# Define a prompt template for summarization
-prompt = PromptTemplate(
-    input_variables=["section_content"],
-    template="""
+    Returns:
+        LLMChain: An instance of LLMChain configured with the selected model.
+    """
+    if model.lower() == "ollama":
+        if not api_url:
+            raise ValueError("Ollama API URL must be provided for Ollama model.")
+        llm = OllamaLLM(
+            model="llama3.1",
+            temperature=0.3,
+            api_url=api_url,
+            api_key=api_key if api_key else None
+        )
+        logger.info("Initialized the Ollama LLM with Llama 3.1 model.")
+    elif model.lower() == "openai":
+        if not api_key:
+            raise ValueError("OpenAI API key must be provided for OpenAI model.")
+        llm = OpenAI(
+            api_key=api_key,
+            temperature=0.3
+        )
+        logger.info("Initialized the OpenAI LLM.")
+    else:
+        raise ValueError(f"Unsupported model: {model}")
+    
+    # Define a prompt template for summarization
+    prompt = PromptTemplate(
+        input_variables=["section_content"],
+        template="""
 You are an assistant that summarizes sections of a markdown document.
 
 Summarize the following section content:
@@ -40,12 +62,13 @@ Summarize the following section content:
 
 Summary:
 """
-)
-
-# Create a chain for summarization
-summarize_chain = LLMChain(llm=llm, prompt=prompt)
-logger.info("Created summarization chain with the given prompt template.")
-
+    )
+    
+    # Create a chain for summarization
+    summarize_chain = LLMChain(llm=llm, prompt=prompt)
+    logger.info("Created summarization chain with the given prompt template.")
+    
+    return summarize_chain
 
 def read_markdown_document(file_content: bytes) -> str:
     """
@@ -65,7 +88,6 @@ def read_markdown_document(file_content: bytes) -> str:
     except Exception as e:
         logger.error(f"Error reading markdown document: {str(e)}")
         raise
-
 
 def extract_sections(markdown_text: str) -> List[Dict[str, str]]:
     """
@@ -110,7 +132,6 @@ def extract_sections(markdown_text: str) -> List[Dict[str, str]]:
         logger.error(f"Error extracting sections: {str(e)}")
         raise
 
-
 def split_text_with_overlap(text: str, max_size: int = 1250, overlap: int = 200) -> List[str]:
     """
     Splits text into chunks of approximately `max_size` characters with `overlap` characters overlapping.
@@ -151,12 +172,12 @@ def split_text_with_overlap(text: str, max_size: int = 1250, overlap: int = 200)
         logger.error(f"Error splitting text into chunks: {str(e)}")
         raise
 
-
-def summarize_sections(sections: List[Dict[str, str]]) -> Dict[str, str]:
+def summarize_sections(summarize_chain: LLMChain, sections: List[Dict[str, str]]) -> Dict[str, str]:
     """
-    Summarizes each section using LangChain and the LLM.
+    Summarizes each section using LangChain and the provided LLMChain.
 
     Args:
+        summarize_chain (LLMChain): The summarization chain configured with the desired LLM.
         sections (List[Dict[str, str]]): List of sections with titles and content.
 
     Returns:
@@ -191,12 +212,12 @@ def summarize_sections(sections: List[Dict[str, str]]) -> Dict[str, str]:
 
     return summaries
 
-
-def process_markdown_document(file_content: bytes, file_name: str) -> Dict[str, any]:
+def process_markdown_document(summarize_chain: LLMChain, file_content: bytes, file_name: str) -> Dict[str, any]:
     """
     Processes the uploaded markdown document and returns both markdown and JSON summaries.
 
     Args:
+        summarize_chain (LLMChain): The summarization chain configured with the desired LLM.
         file_content (bytes): The binary content of the markdown document.
         file_name (str): The name of the uploaded file.
 
@@ -212,7 +233,7 @@ def process_markdown_document(file_content: bytes, file_name: str) -> Dict[str, 
         logger.info(f"Starting document processing for file: {file_name}")
         markdown_text = read_markdown_document(file_content)
         sections = extract_sections(markdown_text)
-        summaries = summarize_sections(sections)
+        summaries = summarize_sections(summarize_chain, sections)
 
         # Create a markdown summary
         summary_markdown = f"# Summaries of {file_name}\n\n"

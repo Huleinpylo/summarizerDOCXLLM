@@ -1,4 +1,4 @@
-# backend/Dockerfile.celery
+# frontend/Dockerfile
 
 # Use an official Python runtime as a parent image
 FROM python:3.12-slim
@@ -18,8 +18,11 @@ COPY ../requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Copy the application code
+# Copy the frontend app code
 COPY . /app
 
-# Command to run the Celery worker
-CMD ["celery", "-A", "celery_worker.celery_app", "worker", "--loglevel=info"]
+# Expose port 8501 for Streamlit
+EXPOSE 8501
+
+# Command to run the Streamlit app
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

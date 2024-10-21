@@ -1,7 +1,12 @@
 # backend/celery_worker.py
 
 from celery import Celery
-from summarizer import read_markdown_document, extract_sections, summarize_sections, split_text_with_overlap
+from summarizer import (
+    get_summarize_chain,
+    read_markdown_document,
+    extract_sections,
+    summarize_sections
+)
 import os
 from dotenv import load_dotenv
 import logging
@@ -16,8 +21,8 @@ logger = logging.getLogger(__name__)
 # Initialize Celery
 celery_app = Celery(
     'worker',
-    broker=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
-    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 )
 
 celery_app.conf.update(
@@ -26,84 +31,110 @@ celery_app.conf.update(
 )
 
 @celery_app.task(bind=True)
-def summarize_document_task(self, file_content: bytes, file_name: str):
+def summarize_document_task(self, file_content: bytes, file_name: str, model: str, api_key: str = None, api_url: str = None):
     """
     Celery task to summarize a markdown document with progress tracking.
-    
+
     Progress is tracked at three levels:
     1. Global progress (overall task)
     2. Section progress (progress within each section)
     3. Chunk progress (progress within chunks of each section)
+
+    Args:
+        file_content (bytes): The binary content of the markdown document.
+        file_name (str): The name of the uploaded file.
+        model (str): The model to use ('ollama' or 'openai').
+        api_key (str, optional): The API key for the selected model.
+        api_url (str, optional): The API URL for Ollama.
+
+    Returns:
+        dict: Dictionary containing 'summary_markdown' and 'summaries_json'.
     """
     try:
-        self.update_state(state='PROGRESS', meta={'current': 0, 'total': 3, 'status': 'Starting summarization.'})
-        
+        self.update_state(state='PROGRESS', meta={
+            'current': 0,
+            'total': 3,
+            'status': 'Starting summarization.',
+            'model': model,
+            'section_total': 0,
+            'section_current': 0,
+            'section_progress': 0,
+            'chunk_total': 0,
+            'chunk_current': 0
+        })
+
+        # Initialize the summarization chain based on model
+        summarize_chain = get_summarize_chain(model=model, api_key=api_key, api_url=api_url)
+
         # Step 1: Read Document
         markdown_text = read_markdown_document(file_content)
-        self.update_state(state='PROGRESS', meta={'current': 1, 'total': 3, 'status': 'Extracting sections.'})
+        self.update_state(state='PROGRESS', meta={
+            'current': 1,
+            'total': 3,
+            'status': 'Extracting sections.',
+            'model': model,
+            'section_total': 0,
+            'section_current': 0,
+            'section_progress': 0,
+            'chunk_total': 0,
+            'chunk_current': 0
+        })
 
         # Step 2: Extract Sections
         sections = extract_sections(markdown_text)
         total_sections = len(sections)
-        global_progress = 2  # Section extraction is complete (2/3 overall progress)
-        section_progress = 0
-
-        # Store overall progress
         self.update_state(state='PROGRESS', meta={
-            'current': global_progress, 'total': 3, 'status': 'Summarizing sections...',
+            'current': 1,
+            'total': 3,
+            'status': 'Summarizing sections.',
+            'model': model,
             'section_total': total_sections,
-            'section_current': section_progress
+            'section_current': 0,
+            'section_progress': 0,
+            'chunk_total': 0,
+            'chunk_current': 0
         })
 
         # Step 3: Summarize Sections
         summaries = {}
-        total_chunks = 0  # We'll calculate the total number of chunks across all sections
-        
-        # Summarize each section
-        for section_index, section in enumerate(sections):
-            section_title = section['title']
-            section_content = section['content'].strip()
+        for section_index, section in enumerate(sections, start=1):
+            title = section['title']
+            content = section['content'].strip()
+            if content:
+                try:
+                    # Split content into chunks
+                    if len(content) > 1250:
+                        chunks = split_text_with_overlap(content, max_size=1250, overlap=200)
+                    else:
+                        chunks = [content]
+                    total_chunks = len(chunks)
+                    summaries_section = ""
 
-            if section_content:
-                # Split the section into chunks
-                chunks = split_text_with_overlap(section_content, max_size=1250, overlap=200)
-                num_chunks = len(chunks)
-                total_chunks += num_chunks
-                chunk_progress = 0
-                
-                section_summary = ""
-                for chunk_index, chunk in enumerate(chunks):
-                    # Process each chunk and update chunk progress
-                    summary = summarize_sections([{'title': section_title, 'content': chunk}])
-                    section_summary += summary[section_title].strip() + " "
-                    
-                    chunk_progress += 1
-                    section_progress = (chunk_index + 1) / num_chunks * 100  # Section percentage
-                    self.update_state(state='PROGRESS', meta={
-                        'current': global_progress, 'total': 3, 
-                        'status': f'Summarizing section: {section_title}',
-                        'section_total': total_sections,
-                        'section_current': section_index + 1,
-                        'section_progress': section_progress, 
-                        'chunk_total': num_chunks,
-                        'chunk_current': chunk_progress
-                    })
+                    for chunk_index, chunk in enumerate(chunks, start=1):
+                        # Summarize each chunk
+                        summary = summarize_sections(summarize_chain, [{'title': title, 'content': chunk}])
+                        summaries_section += summary[title].strip() + " "
 
-                summaries[section_title] = section_summary.strip()
+                        # Update chunk progress
+                        self.update_state(state='PROGRESS', meta={
+                            'current': 1,
+                            'total': 3,
+                            'status': f'Summarizing section: {title}',
+                            'model': model,
+                            'section_total': total_sections,
+                            'section_current': section_index,
+                            'section_progress': int((section_index / total_sections) * 100),
+                            'chunk_total': total_chunks,
+                            'chunk_current': chunk_index
+                        })
 
+                    summaries[title] = summaries_section.strip()
+                except Exception as e:
+                    logger.error(f"Error summarizing section '{title}': {str(e)}")
+                    summaries[title] = f"Error summarizing section: {str(e)}"
             else:
-                summaries[section_title] = "No content to summarize."
-            
-            # Update global progress after each section is summarized
-            global_progress += 1
-            self.update_state(state='PROGRESS', meta={
-                'current': global_progress, 'total': total_sections + 3,
-                'status': 'Summarizing sections...',
-                'section_total': total_sections,
-                'section_current': section_index + 1,
-                'section_progress': 100,
-            })
-        
+                summaries[title] = "No content to summarize."
+
         # Compile Summaries
         summary_markdown = f"# Summaries of {file_name}\n\n"
         for title, summary in summaries.items():
@@ -114,6 +145,18 @@ def summarize_document_task(self, file_content: bytes, file_name: str):
             "summaries": summaries
         }
 
+        self.update_state(state='PROGRESS', meta={
+            'current': 3,
+            'total': 3,
+            'status': 'Finalizing summaries.',
+            'model': model,
+            'section_total': total_sections,
+            'section_current': total_sections,
+            'section_progress': 100,
+            'chunk_total': 0,
+            'chunk_current': 0
+        })
+
         logger.info(f"Task {self.request.id} completed successfully.")
         return {
             "summary_markdown": summary_markdown.strip(),
@@ -122,4 +165,5 @@ def summarize_document_task(self, file_content: bytes, file_name: str):
 
     except Exception as e:
         logger.error(f"Error in summarization task {self.request.id}: {str(e)}")
+        # Retry the task in 60 seconds, up to 3 retries
         raise self.retry(exc=e, countdown=60, max_retries=3)

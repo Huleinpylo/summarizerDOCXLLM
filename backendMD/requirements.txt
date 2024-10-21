@@ -9,3 +9,4 @@ streamlit
 streamlit-lottie
 requests
 pillow
+openai
