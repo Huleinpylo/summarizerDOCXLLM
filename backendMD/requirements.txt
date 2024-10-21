@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+langchain
+langchain-ollama
+python-dotenv
+celery
+redis
+streamlit
+streamlit-lottie
+requests
+pillow
