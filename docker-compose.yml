@@ -1,15 +1,6 @@
 # docker-compose.yml
 
-version: '3.8'
-
 services:
-  redis:
-    image: "redis:latest"
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
   backend:
     build:
       context: ./backendMD
@@ -25,6 +16,7 @@ services:
     build:
       context: ./backendMD
       dockerfile: Dockerfile.celery
+    command: celery -A celery_worker.celery_app worker --loglevel=info
     env_file:
       - .env
     depends_on:
@@ -43,5 +35,32 @@ services:
       - backend
       - redis
 
+  redis:
+    image: "redis:latest"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    runtime: nvidia # Required to enable GPU support
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
 volumes:
   redis_data:
+  ollama:

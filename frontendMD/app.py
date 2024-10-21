@@ -48,7 +48,7 @@ model = st.selectbox(
 
 # Model-specific credentials
 if model == "Ollama":
-    api_url = st.text_input("Ollama API URL:", value="http://localhost:11434")
+    api_url = st.text_input("Ollama API URL:", value="http://ollama:11434")
     api_key = st.text_input("Ollama API Key:", type="password")
 elif model == "OpenAI":
     api_key = st.text_input("OpenAI API Key:", type="password")
@@ -76,7 +76,7 @@ if st.button("✨ Summarize Document ✨") and uploaded_file is not None:
 
         try:
             # Replace with your FastAPI backend URL
-            backend_url = "http://localhost:8001/summarize"
+            backend_url = "http://backend:8001/summarize"
 
             response = requests.post(backend_url, files=files, params=params)
 
@@ -91,7 +91,7 @@ if st.button("✨ Summarize Document ✨") and uploaded_file is not None:
                 status_text = st.empty()
 
                 while True:
-                    status_response = requests.get(f"http://localhost:8001/status/{job_id}")
+                    status_response = requests.get(f"http://backend:8001/status/{job_id}")
                     if status_response.status_code == 200:
                         status_data = status_response.json()
                         global_progress = int(status_data.get("progress", 0))
@@ -118,7 +118,7 @@ if st.button("✨ Summarize Document ✨") and uploaded_file is not None:
 
                 # Retrieve the result
                 if status_data["status"] == "SUCCESS":
-                    result_response = requests.get(f"http://localhost:8001/result/{job_id}")
+                    result_response = requests.get(f"http://backend:8001/result/{job_id}")
                     if result_response.status_code == 200:
                         result_data = result_response.json()
                         summary_markdown = result_data.get("summary_markdown", "")

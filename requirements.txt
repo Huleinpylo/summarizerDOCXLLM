@@ -10,11 +10,4 @@ streamlit-lottie
 requests
 pillow
 openai
-langchain_community
-langchain-openai
-langchain-anthropic
-langchain
-langgraph
-bs4
-python-multipart
 langchain-core

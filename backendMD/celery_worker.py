@@ -5,7 +5,8 @@ from summarizer import (
     get_summarize_chain,
     read_markdown_document,
     extract_sections,
-    summarize_sections
+    summarize_sections,
+    split_text_with_overlap
 )
 import os
 from dotenv import load_dotenv
@@ -24,6 +25,10 @@ celery_app = Celery(
     broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
     backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 )
+
+@celery_app.task(bind=True)
+def test_task():
+    return "Task Completed"
 
 celery_app.conf.update(
     task_track_started=True,
@@ -63,8 +68,8 @@ def summarize_document_task(self, file_content: bytes, file_name: str, model: st
             'chunk_current': 0
         })
 
-        # Initialize the summarization chain based on model
-        summarize_chain = get_summarize_chain(model=model, api_key=api_key, api_url=api_url)
+        # Initialize the summarization sequence based on model
+        summarize_sequence = get_summarize_chain(model=model, api_key=api_key, api_url=api_url)
 
         # Step 1: Read Document
         markdown_text = read_markdown_document(file_content)
@@ -103,8 +108,8 @@ def summarize_document_task(self, file_content: bytes, file_name: str, model: st
             if content:
                 try:
                     # Split content into chunks
-                    if len(content) > 1250:
-                        chunks = split_text_with_overlap(content, max_size=1250, overlap=200)
+                    if len(content) > 12500:
+                        chunks = split_text_with_overlap(content, max_size=12500, overlap=200)
                     else:
                         chunks = [content]
                     total_chunks = len(chunks)
@@ -112,7 +117,7 @@ def summarize_document_task(self, file_content: bytes, file_name: str, model: st
 
                     for chunk_index, chunk in enumerate(chunks, start=1):
                         # Summarize each chunk
-                        summary = summarize_sections(summarize_chain, [{'title': title, 'content': chunk}])
+                        summary = summarize_sections(summarize_sequence, [{'title': title, 'content': chunk}])
                         summaries_section += summary[title].strip() + " "
 
                         # Update chunk progress

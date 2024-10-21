@@ -34,16 +34,6 @@ async def summarize(
 ):
     """
     Endpoint to upload a markdown document and initiate a summarization job.
-
-    Args:
-        file (UploadFile): The uploaded markdown file.
-        model (str, optional): The model to use ('ollama' or 'openai'). Defaults to 'ollama'.
-        api_key (str, optional): The API key for the selected model.
-        api_url (str, optional): The API URL for Ollama. Required if model is 'ollama'.
-        format (str, optional): Desired output format ('markdown' or 'json'). Defaults to 'markdown'.
-
-    Returns:
-        JSONResponse: A JSON response containing the job ID.
     """
     try:
         # Validate model-specific parameters
@@ -87,12 +77,6 @@ async def summarize(
 def get_status(job_id: str):
     """
     Endpoint to check the status of a summarization job.
-
-    Args:
-        job_id (str): The unique identifier of the job.
-
-    Returns:
-        JSONResponse: A JSON response containing the job status and progress.
     """
     try:
         task_result = AsyncResult(job_id, app=celery_app)
@@ -136,12 +120,6 @@ def get_status(job_id: str):
 def get_result(job_id: str):
     """
     Endpoint to retrieve the result of a summarization job.
-
-    Args:
-        job_id (str): The unique identifier of the job.
-
-    Returns:
-        JSONResponse: The summarized content in the requested format.
     """
     try:
         task_result = AsyncResult(job_id, app=celery_app)
@@ -158,7 +136,6 @@ def get_result(job_id: str):
     except Exception as e:
         logger.error(f"Error in /result/{job_id} endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8001, reload=True)

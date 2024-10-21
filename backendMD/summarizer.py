@@ -4,9 +4,9 @@ import logging
 import re
 from typing import List, Dict
 from langchain_ollama import OllamaLLM
-from langchain.llms import OpenAI
-from langchain.chains import LLMChain
+from langchain_community.llms import OpenAI  # Updated import
 from langchain.prompts import PromptTemplate
+from langchain_core.runnables import RunnableSequence,RunnableLambda  # New import
 from dotenv import load_dotenv
 import os
 
@@ -17,9 +17,9 @@ load_dotenv()
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def get_summarize_chain(model: str, api_key: str = None, api_url: str = None) -> LLMChain:
+def get_summarize_chain(model: str, api_key: str = None, api_url: str = None) -> RunnableSequence:
     """
-    Factory function to create an LLMChain based on the selected model.
+    Factory function to create a RunnableSequence based on the selected model.
 
     Args:
         model (str): The model to use ('ollama' or 'openai').
@@ -27,7 +27,7 @@ def get_summarize_chain(model: str, api_key: str = None, api_url: str = None) ->
         api_url (str, optional): The API URL for Ollama.
 
     Returns:
-        LLMChain: An instance of LLMChain configured with the selected model.
+        RunnableSequence: An instance of RunnableSequence configured with the selected model.
     """
     if model.lower() == "ollama":
         if not api_url:
@@ -64,11 +64,12 @@ Summary:
 """
     )
     
-    # Create a chain for summarization
-    summarize_chain = LLMChain(llm=llm, prompt=prompt)
-    logger.info("Created summarization chain with the given prompt template.")
+    # Create a RunnableSequence for summarization
+    summarize_sequence = RunnableSequence(prompt, llm)
+    logger.info("Created summarization sequence with the given prompt template.")
     
-    return summarize_chain
+    return summarize_sequence
+
 
 def read_markdown_document(file_content: bytes) -> str:
     """
@@ -132,7 +133,7 @@ def extract_sections(markdown_text: str) -> List[Dict[str, str]]:
         logger.error(f"Error extracting sections: {str(e)}")
         raise
 
-def split_text_with_overlap(text: str, max_size: int = 1250, overlap: int = 200) -> List[str]:
+def split_text_with_overlap(text: str, max_size: int = 10000, overlap: int = 200) -> List[str]:
     """
     Splits text into chunks of approximately `max_size` characters with `overlap` characters overlapping.
 
@@ -172,12 +173,13 @@ def split_text_with_overlap(text: str, max_size: int = 1250, overlap: int = 200)
         logger.error(f"Error splitting text into chunks: {str(e)}")
         raise
 
-def summarize_sections(summarize_chain: LLMChain, sections: List[Dict[str, str]]) -> Dict[str, str]:
+
+def summarize_sections(summarize_sequence: RunnableSequence, sections: List[Dict[str, str]]) -> Dict[str, str]:
     """
-    Summarizes each section using LangChain and the provided LLMChain.
+    Summarizes each section using LangChain and the provided RunnableSequence.
 
     Args:
-        summarize_chain (LLMChain): The summarization chain configured with the desired LLM.
+        summarize_sequence (RunnableSequence): The summarization sequence configured with the desired LLM.
         sections (List[Dict[str, str]]): List of sections with titles and content.
 
     Returns:
@@ -198,7 +200,7 @@ def summarize_sections(summarize_chain: LLMChain, sections: List[Dict[str, str]]
 
                 section_summary = ""
                 for batch in batches:
-                    summary = summarize_chain.run(section_content=batch)
+                    summary = summarize_sequence.invoke({"section_content": batch})
                     section_summary += summary.strip() + " "
 
                 summaries[title] = section_summary.strip()
@@ -212,12 +214,12 @@ def summarize_sections(summarize_chain: LLMChain, sections: List[Dict[str, str]]
 
     return summaries
 
-def process_markdown_document(summarize_chain: LLMChain, file_content: bytes, file_name: str) -> Dict[str, any]:
+def process_markdown_document(summarize_chain: RunnableSequence, file_content: bytes, file_name: str) -> Dict[str, any]:
     """
     Processes the uploaded markdown document and returns both markdown and JSON summaries.
 
     Args:
-        summarize_chain (LLMChain): The summarization chain configured with the desired LLM.
+        summarize_chain (RunnableSequence): The summarization chain configured with the desired LLM.
         file_content (bytes): The binary content of the markdown document.
         file_name (str): The name of the uploaded file.
 
